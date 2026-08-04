@@ -6,8 +6,8 @@ can be made in one place without touching application logic.
 """
 
 from PyQt5.QtWidgets import QLabel, QPushButton, QFrame, QMessageBox
-from PyQt5.QtCore import Qt, QByteArray
-from PyQt5.QtGui import QPixmap, QPainter, QIcon
+from PyQt5.QtCore import Qt, QByteArray, QRectF, QSize
+from PyQt5.QtGui import QPixmap, QPainter, QIcon, QColor, QPainterPath, QFont
 from PyQt5.QtSvg import QSvgRenderer
 
 # ---------------------------------------------------------------------------
@@ -70,6 +70,21 @@ RELOAD_SVG = (
 )
 
 # ---------------------------------------------------------------------------
+# Tooltip stylesheet snippet
+# ---------------------------------------------------------------------------
+# Qt applies a widget's OWN stylesheet as the tooltip style context.  Any widget
+# that calls setStyleSheet() stops inheriting the global QToolTip rule from APP_STYLE.
+# Append TOOLTIP_CSS to every per-widget stylesheet that also carries a tooltip so
+# the popup is always styled consistently. APP_STYLE embeds this same constant
+# for its own global QToolTip rule rather than repeating the values, so the two
+# can never drift out of sync.
+TOOLTIP_CSS = (
+    f"QToolTip {{ background: {SURFACE}; color: {FG}; "
+    f"border: 1px solid {BORDER}; padding: 5px 10px; "
+    f"border-radius: 6px; font-size: 12px; }}"
+)
+
+# ---------------------------------------------------------------------------
 # Global stylesheet
 # ---------------------------------------------------------------------------
 
@@ -128,28 +143,8 @@ QScrollBar::handle:vertical {{
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QMessageBox {{ background: {SURFACE}; }}
-QToolTip {{
-    background: {SURFACE};
-    color: {FG};
-    border: 1px solid {BORDER};
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: 12px;
-}}
+{TOOLTIP_CSS}
 """
-
-# ---------------------------------------------------------------------------
-# Tooltip stylesheet snippet
-# ---------------------------------------------------------------------------
-# Qt applies a widget's OWN stylesheet as the tooltip style context.  Any widget
-# that calls setStyleSheet() stops inheriting the global QToolTip rule from APP_STYLE.
-# Append TOOLTIP_CSS to every per-widget stylesheet that also carries a tooltip so
-# the popup is always styled consistently.
-TOOLTIP_CSS = (
-    f"QToolTip {{ background: {SURFACE}; color: {FG}; "
-    f"border: 1px solid {BORDER}; padding: 5px 10px; "
-    f"border-radius: 6px; font-size: 12px; }}"
-)
 
 # ---------------------------------------------------------------------------
 # Widget factories
@@ -162,20 +157,130 @@ def _rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
+class _RoundButton(QPushButton):
+    """A QPushButton that paints its own rounded background instead of using
+    QSS border-radius.
+
+    QSS border-radius on QPushButton was found to render inconsistently
+    under Qt/Fusion on macOS: two buttons built from byte-for-byte identical
+    stylesheet strings, enabled and painted together in the same window,
+    rendered with different corner treatment (one sharp, one rounded) —
+    100% reproducible across repeated runs, not a timing fluke. Painting the
+    shape directly in paintEvent removes the dependency on Qt's stylesheet
+    cache/style-engine behaviour for this critical a piece of the design
+    system. Tooltips are unaffected — those still go through setStyleSheet
+    with TOOLTIP_CSS, a wholly separate rendering path.
+    """
+
+    def __init__(self, text: str = "", bg: str = ACCENT, hover: str = None,
+                 pressed: str = None, fg: str = "#ffffff",
+                 radius: int = 10, vanish_disabled: bool = False,
+                 icon_only: bool = False, bold: bool = True,
+                 font_size: int = 12, parent=None) -> None:
+        super().__init__(text, parent)
+        self._bg = bg
+        self._hover_bg = hover or bg
+        self._pressed_bg = pressed or self._hover_bg
+        self._fg = fg
+        self._radius = radius
+        self._vanish_disabled = vanish_disabled
+        self._icon_only = icon_only
+        self._bold = bold
+        self._font_size = font_size
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFlat(True)
+
+    def enterEvent(self, event) -> None:
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self.update()
+        super().leaveEvent(event)
+
+    def _current_bg(self) -> str:
+        if not self.isEnabled():
+            return "transparent" if (self._vanish_disabled or self._icon_only) else SURFACE
+        if self.isDown():
+            return self._pressed_bg
+        if self.underMouse():
+            return self._hover_bg
+        return self._bg
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        rect = QRectF(self.rect())
+        path = QPainterPath()
+        path.addRoundedRect(rect, self._radius, self._radius)
+        painter.fillPath(path, QColor(self._current_bg()))
+
+        if self._icon_only:
+            icon = self.icon()
+            if not icon.isNull():
+                sz = self.iconSize()
+                x = (self.width() - sz.width()) // 2
+                y = (self.height() - sz.height()) // 2
+                if not self.isEnabled():
+                    painter.setOpacity(0.35)
+                icon.paint(painter, x, y, sz.width(), sz.height())
+        else:
+            font = QFont(self.font())
+            font.setPixelSize(self._font_size)
+            font.setBold(self._bold)
+            font.setLetterSpacing(QFont.AbsoluteSpacing, 0.2)
+            painter.setFont(font)
+            fg = self._fg if self.isEnabled() else FG3
+            painter.setPen(QColor(fg))
+            painter.drawText(self.rect(), Qt.AlignCenter, self.text())
+
+        painter.end()
+
+    def sizeHint(self):
+        from PyQt5.QtCore import QSize
+        from PyQt5.QtGui import QFontMetrics
+        if self._icon_only:
+            sz = self.iconSize()
+            return QSize(max(sz.width(), 20) + 16, max(sz.height(), 20) + 16)
+        font = QFont(self.font())
+        font.setPixelSize(self._font_size)
+        font.setBold(self._bold)
+        fm = QFontMetrics(font)
+        w = fm.horizontalAdvance(self.text()) + 32
+        h = fm.height() + 14
+        return QSize(w, h)
+
+
 def button(text: str, bg: str = ACCENT, hover: str = None,
            ghost: bool = False, color: str = None,
-           vanish_disabled: bool = False, radius: int = 6) -> QPushButton:
-    """Create a styled QPushButton matching the application design system.
+           vanish_disabled: bool = False, radius: int = 10,
+           height: int = None) -> QPushButton:
+    """Create a styled button matching the application design system.
 
-    ghost=True           — secondary outline-style button.
+    ghost=True           — secondary outline-style button (QSS-rendered QPushButton).
     color=<hex>          — for ghost buttons, tints border and label with the given color.
     vanish_disabled=True — filled buttons only: disabled state dissolves to faint text
                            with no shape so the button vanishes when it cannot be used.
-    radius=<int>         — border-radius in px. Use 3–4 for toolbar/inline controls
-                           (sharper, more utilitarian) and 8–10 for main action buttons
-                           (rounder, friendlier).
+    radius=<int>         — corner radius in px. Use 8–10 for compact/inline controls
+                           and 18–20 for main action buttons (Scan/Block/Unblock use
+                           20, which exceeds half their height and renders as a full
+                           pill/stadium shape — the house style for primary actions).
+    height=<int>         — fixed row height in px.
+
+    Non-ghost (filled) buttons return a _RoundButton, which paints its own
+    background instead of using QSS border-radius — see that class's
+    docstring for why. Ghost buttons are unused elsewhere in the app today
+    and still use plain QSS.
     """
     hover = hover or bg
+    height_css = f"min-height:{height}px; max-height:{height}px;" if height else ""
+    # Qt's box model adds padding on top of min-height/max-height rather than
+    # inside it (content-box behaviour) — a button with height=34 and 6px
+    # vertical padding renders at 46px, not 34px. When an explicit height is
+    # given, vertical padding must be 0 and min/max-height does all the work;
+    # Qt still centers the label vertically within that box on its own.
+    v_pad = "0" if height else "6px"
     if ghost:
         if color:
             bord   = _rgba(color, 0.35)
@@ -187,9 +292,10 @@ def button(text: str, bg: str = ACCENT, hover: str = None,
                     color: {color};
                     border: 1px solid {bord};
                     border-radius: {radius}px;
-                    padding: 6px 16px;
+                    padding: {v_pad} 16px;
                     font-size: 12px;
                     font-weight: 500;
+                    {height_css}
                 }}
                 QPushButton:hover   {{ background: {hov_bg}; border-color: {color}; }}
                 QPushButton:pressed {{ background: {pre_bg}; border-color: {color}; }}
@@ -206,9 +312,10 @@ def button(text: str, bg: str = ACCENT, hover: str = None,
                     color: {FG2};
                     border: 1px solid {BORDER};
                     border-radius: {radius}px;
-                    padding: 6px 16px;
+                    padding: {v_pad} 16px;
                     font-size: 12px;
                     font-weight: 500;
+                    {height_css}
                 }}
                 QPushButton:hover   {{ background: {SURFACE}; color: {FG}; border-color: {FG3}; }}
                 QPushButton:pressed {{ background: {SURFACE2}; color: {FG}; }}
@@ -218,28 +325,42 @@ def button(text: str, bg: str = ACCENT, hover: str = None,
                     border: 1px solid {SURFACE};
                 }}
             """
-    else:
-        dis = (f"background: transparent; color: {FG3}; border: none;"
-               if vanish_disabled else
-               f"background: {SURFACE}; color: {FG3}; border-color: {BORDER};")
-        style = f"""
-            QPushButton {{
-                background: {bg};
-                color: white;
-                border: 1px solid transparent;
-                border-radius: {radius}px;
-                padding: 6px 16px;
-                font-size: 12px;
-                font-weight: 600;
-                letter-spacing: 0.2px;
-            }}
-            QPushButton:hover    {{ background: {hover}; }}
-            QPushButton:pressed  {{ background: {hover}; border-color: rgba(0,0,0,0.18); }}
-            QPushButton:disabled {{ {dis} }}
-        """
-    btn = QPushButton(text)
-    btn.setCursor(Qt.PointingHandCursor)
-    btn.setStyleSheet(style + "\n" + TOOLTIP_CSS)
+        btn = QPushButton(text)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setStyleSheet(style + "\n" + TOOLTIP_CSS)
+        return btn
+
+    # Filled/primary buttons (Scan, Block, Unblock, Block All, Unblock All):
+    # painted by _RoundButton rather than QSS, see its docstring for why.
+    btn = _RoundButton(
+        text, bg=bg, hover=hover, pressed=hover,
+        radius=radius, vanish_disabled=vanish_disabled,
+    )
+    if height:
+        btn.setFixedHeight(height)
+    btn.setStyleSheet(TOOLTIP_CSS)   # tooltip popup styling only — paintEvent owns the body
+    return btn
+
+
+def icon_button(icon_svg: str, size: int = 36, icon_size: int = 18,
+                 idle_color: str = FG, radius: int = None,
+                 hover_bg: str = "transparent", pressed_bg: str = SURFACE2) -> QPushButton:
+    """Create a circular icon-only button (reload, eye/visibility toggle, etc).
+
+    Built on _RoundButton for the same reason as button() — QSS border-radius
+    proved unreliable on QPushButton under Qt/Fusion/macOS, so the circle is
+    painted directly instead. hover_bg="transparent" (the default) means no
+    fill at all on hover — only whatever icon-color change the caller wires
+    up separately (see _IconHover) provides feedback; pass an actual color
+    for hover_bg if a filled circle on hover is wanted instead.
+    """
+    radius = radius if radius is not None else size // 2
+    btn = _RoundButton(bg="transparent", hover=hover_bg, pressed=pressed_bg,
+                        radius=radius, icon_only=True)
+    btn.setIcon(svg_icon(icon_svg, icon_size, idle_color))
+    btn.setIconSize(QSize(icon_size, icon_size))
+    btn.setFixedSize(size, size)
+    btn.setStyleSheet(TOOLTIP_CSS)
     return btn
 
 

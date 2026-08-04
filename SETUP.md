@@ -151,40 +151,42 @@ When Warden first opens, you will see a welcome screen. Here is a map of all the
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ ⬡ Warden │ Network Control        Active   en0  IP  ···  show  │ ← Top bar
-├──────────┬──────────────────┬───────────────┬───────────────────┤
-│    5     │       2          │      3        │   192.168.1.1     │ ← Stats row
-│ DEVICES  │   BLOCKED        │   ONLINE      │   GATEWAY         │
-├──────────┴──────────────────┴───────────────┴───────────────────┤
-│ Gateway IP  [192.168.1.1]  [Scan Network]   GW MAC: ···  show   │ ← Toolbar
+├─────────────────────┬─────────────────────┬─────────────────────┤
+│          5          │          2          │          3          │ ← Stats row
+│       DEVICES       │       BLOCKED       │       ONLINE        │
+├─────────────────────┴─────────────────────┴─────────────────────┤
+│  Gateway IP  [192.168.1.1]           Gateway MAC:  ···  show    │ ← Toolbar
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│                       Device table                              │ ← Main area
+│              ⬡  Welcome to Warden                               │
+│                  [ Scan Network ]                               │ ← Main area
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │ SELECTION [Block] [Unblock]  │  ALL  [Block All] [Unblock All]  │ ← Controls
+│                                                      ↺   Reset  │
 ├─────────────────────────────────────────────────────────────────┤
-│ ● Scan complete — 5 devices found                               │ ← Status bar
+│ ● Ready — click Scan Network to begin              v1.0.0       │ ← Status bar
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 **Top bar** — Shows the Warden name and, after a scan, your network interface (e.g. `en0`) and your Mac's IP address. Both are hidden by default — click **show** to reveal them.
 
-**Stats row** — A quick summary: total devices found, how many are blocked, how many are online, and your gateway IP.
+**Stats row** — A quick summary: total devices found, how many are blocked, and how many are online.
 
-**Toolbar** — Where you enter the gateway IP and click Scan Network. After the first scan, the gateway's MAC address also appears here (hidden by default).
+**Toolbar** — Where you enter the gateway IP. After the first scan, the gateway's MAC address also appears here (hidden by default).
 
-**Main area** — Shows a welcome screen before scanning, a "Scanning…" screen while the scan runs, and the device table once devices are found.
+**Main area** — Shows a welcome screen with a **Scan Network** button on first launch and after resetting. Changes to a "Scanning…" screen while the scan runs, then to the device table once devices are found.
 
-**Control bar** — Block and Unblock buttons for ticked devices; Block All / Unblock All for bulk actions. Buttons only appear coloured when they have something to do — if they look invisible, it means no action is available right now.
+**Control bar** — Block and Unblock buttons for ticked devices; Block All / Unblock All for bulk actions. Buttons only appear coloured when they have something to do — if they look invisible, it means no action is available right now. The reload icon (↺) on the right rescans the network; the **Reset** button clears the list.
 
-**Status bar** — A one-line message showing the most recent action (e.g. "3 devices blocked", "Scan complete — 5 devices found").
+**Status bar** — A one-line message showing the most recent action (e.g. "3 devices blocked", "Scan complete — 5 devices found"). The app version is shown on the right.
 
 ---
 
 ### Scanning the Network
 
 1. Type your **Gateway IP** into the box in the toolbar (see Step 5 above)
-2. Click **Scan Network**
+2. Click **Scan Network** (the button in the centre of the welcome screen)
 3. The screen changes to **"Scanning network..."** — Warden is sending ARP requests to every possible address on your network
 4. Devices appear in the list as they respond. This typically takes 3–8 seconds.
 5. When the scan finishes, the status bar shows how many devices were found
@@ -192,9 +194,9 @@ When Warden first opens, you will see a welcome screen. Here is a map of all the
 **What is ARP?**
 ARP stands for Address Resolution Protocol. It is a standard mechanism built into every network device. Warden broadcasts an ARP question to every address on your network, and connected devices automatically reply to identify themselves. It is a passive, read-only discovery process — nothing is modified or disrupted during a scan.
 
-**Scanning again:** Click Scan Network at any time to refresh. Devices already in the list stay visible; new devices are added. Any active blocking is not interrupted.
+**Scanning again:** After the first scan, the reload icon (↺) appears in the bottom-right corner of the controls bar. Click it at any time to refresh. Devices already in the list stay visible; new devices are added. Any active blocking is not interrupted.
 
-**The first scan may not find every device.** Some devices take a moment to respond to ARP requests, especially if they have just woken from sleep or have not sent any network traffic recently. If you expect more devices than the list shows, click Scan Network (or the reload button next to Reset) one or two more times. Each additional scan adds any newly responding devices to the list without removing the ones already found.
+**The first scan may not find every device.** Some devices take a moment to respond to ARP requests, especially if they have just woken from sleep or have not sent any network traffic recently. If you expect more devices than the list shows, click the reload icon (↺) one or two more times. Each additional scan adds any newly responding devices to the list without removing the ones already found.
 
 ---
 
@@ -251,13 +253,10 @@ Starting with iOS 14 (iPhone, iPad), Android 10, and Windows 10, most modern pho
 
 When a device uses a random MAC:
 - Warden cannot look it up in the manufacturer database, so no brand name appears
-- You cannot tell from the MAC alone whether it is a phone, laptop, or tablet
-- The device still works perfectly and can still be blocked
+- You cannot tell from the MAC address alone whether it is a phone, laptop, or tablet
+- The device still works perfectly and **can still be blocked**
 
-**How to identify a device showing [Private MAC]:**
-- Turn off Wi-Fi on each of your devices one by one, rescan, and see which entry disappears from the table — that was the device
-- On iPhone: go to **Settings → Wi-Fi → tap ⓘ next to your network name → Private Wi-Fi Address → toggle off** for that specific network
-- On Android: go to **Settings → Wi-Fi → long-press your network → Modify → Advanced → Privacy → Use device MAC**
+Seeing `[Private MAC]` in the Device column is completely normal and expected for any modern smartphone or laptop. It does not indicate a problem with Warden or with the device — it simply means the device is using its operating system's built-in privacy protection.
 
 ---
 
@@ -314,9 +313,9 @@ The moment you click Unblock or close Warden, it sends several corrective ARP me
 
 ---
 
-### Clearing the List
+### Resetting the List
 
-Click **Clear List** to remove all devices from the table. Any blocked devices are automatically unblocked first, then the entire list is cleared and the welcome screen returns.
+Click **Reset** to remove all devices from the table. Any blocked devices are automatically unblocked first, then the entire list is cleared and the welcome screen returns.
 
 ---
 
@@ -324,7 +323,7 @@ Click **Clear List** to remove all devices from the table. Any blocked devices a
 
 After scanning, two pieces of network information appear in the interface:
 
-- **GW MAC** (in the toolbar) — the MAC address of your router
+- **Gateway MAC** (in the toolbar) — the MAC address of your router
 - **IP** (in the top bar) — your Mac's current IP address on the network
 
 Both are hidden by default and replaced with placeholder text (`xx:xx:xx:xx:xx:xx` and `xxx.xxx.xxx.xxx`). This protects your network details if someone can see your screen or if you take a screenshot for support.
@@ -369,13 +368,11 @@ Click **show** next to either value to reveal it, and **hide** to conceal it aga
 - Test with a web browser, not a video streaming app. Streaming apps often use QUIC which bypasses this type of blocking.
 - Keep your Mac connected to Wi-Fi — if it drops, blocking stops.
 
-**Device shows [Private MAC] — I cannot tell which device it is**
-- Turn off Wi-Fi on each device one at a time, rescan after a few seconds, and see which entry disappears.
-- On **iPhone**: Settings → Wi-Fi → tap ⓘ next to your network → Private Wi-Fi Address → toggle off.
-- On **Android**: Settings → Wi-Fi → long-press your network → Modify → Advanced → Privacy → Use device MAC.
+**Device shows [Private MAC] — I cannot identify it**
+- This is expected behaviour. Most modern smartphones and laptops (iOS 14+, Android 10+, Windows 10+) generate a random MAC address each time they join a network, so no brand name is available. The device is still on the network and can still be blocked. You will not be able to determine the device type from the MAC address alone.
 
 **Device name shows "resolving..." for a long time**
-- Warden runs a second name lookup 4 seconds after scanning. If nothing appears after that, the device is not broadcasting its name on the network. Use the process-of-elimination method above to identify it.
+- Warden runs a second name lookup 4 seconds after scanning. If nothing appears after that, the device is not broadcasting its name on the network.
 
 **The Block or Unblock button looks invisible (no colour, no border)**
 - This is intentional design. The Block button only becomes visible and red when you have ticked at least one device that is currently online. The Unblock button only becomes visible and green when you have ticked at least one device that is currently blocked. If both look invisible, tick a row in the table first.

@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import (
     QLabel, QPushButton, QLineEdit, QTableWidget, QTableWidgetItem,
     QHeaderView, QFrame, QAbstractItemView, QStackedWidget
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QObject, QSize, QEvent
+from PyQt5.QtCore import Qt, pyqtSignal, QObject, QEvent
 from PyQt5.QtGui import QColor
 
 import network
@@ -29,7 +29,7 @@ from theme import (
     ACCENT, ACCENT_H, SUCCESS, DANGER, WARNING, FG, FG2, FG3,
     ROW_A, ROW_B, ROW_BLK,
     EYE_SVG, EYE_SLASH_SVG, RELOAD_SVG,
-    button, label, alert, vdivider, svg_icon, TOOLTIP_CSS
+    button, icon_button, label, alert, vdivider, svg_icon, TOOLTIP_CSS
 )
 
 
@@ -58,10 +58,30 @@ class _IconHover(QObject):
     def eventFilter(self, obj, event) -> bool:
         if obj is self._btn:
             t = event.type()
-            if t == QEvent.Enter:
+            if t == QEvent.Enter and obj.isEnabled():
                 self._btn.setIcon(self._on)
             elif t == QEvent.Leave:
                 self._btn.setIcon(self._off)
+        return False
+
+
+class _ToggleIconHover(QObject):
+    """Event filter for icon buttons whose icon source also changes on click
+    (the eye/eye-slash visibility toggles), so a fixed off/on icon pair like
+    _IconHover uses doesn't fit. Calls back into a refresh function that
+    knows the button's current toggle state and re-renders the icon with a
+    hover-appropriate color — same "no background fill, color shift only"
+    hover language as every other icon control in the app.
+    """
+    def __init__(self, btn: "QPushButton", refresh_fn) -> None:
+        super().__init__(btn)
+        self._btn = btn
+        self._refresh = refresh_fn
+        btn.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:
+        if obj is self._btn and event.type() in (QEvent.Enter, QEvent.Leave):
+            self._refresh()
         return False
 
 
@@ -159,6 +179,8 @@ class WardenApp(QMainWindow):
         self.iface_toggle.setVisible(False)
         self.iface_toggle.setToolTip("Show local IP address")
         self.iface_toggle.clicked.connect(self._toggle_iface)
+        _ToggleIconHover(self.iface_toggle,
+                          lambda: self._set_eye_icon(self.iface_toggle, self._iface_visible))
         nl.addWidget(self.nav_dot)
         nl.addSpacing(5)
         nl.addWidget(self.nav_status)
@@ -185,28 +207,29 @@ class WardenApp(QMainWindow):
         self.stat_total_val   = label("0", FG3, 22, bold=True)
         self.stat_blocked_val = label("0", FG3, 22, bold=True)
         self.stat_online_val  = label("0", FG3, 22, bold=True)
-        self.stat_gw_val      = label("—", FG3, 12)
 
         self.stat_total_val.setToolTip("Total devices found in the last scan")
         self.stat_blocked_val.setToolTip("Devices currently cut off from the internet")
         self.stat_online_val.setToolTip("Devices with active internet access")
-        self.stat_gw_val.setToolTip("Your router's IP address")
 
-        for val_lbl in (self.stat_total_val, self.stat_blocked_val,
-                        self.stat_online_val, self.stat_gw_val):
+        for val_lbl in (self.stat_total_val, self.stat_blocked_val, self.stat_online_val):
             val_lbl.setAlignment(Qt.AlignCenter)
 
         def _tile(val_widget: QLabel, caption: str, last: bool = False) -> None:
+            tip = val_widget.toolTip()
             tile = QFrame()
-            tile.setStyleSheet("background:transparent; border:none;")
+            tile.setToolTip(tip)
+            tile.setStyleSheet(f"QFrame {{ background:transparent; border:none; }} " + TOOLTIP_CSS)
             tl = QVBoxLayout(tile)
             tl.setContentsMargins(32, 12, 32, 12)
             tl.setSpacing(3)
             tl.addWidget(val_widget, alignment=Qt.AlignCenter)
             cap = label(caption.upper(), FG3, 9)
             cap.setAlignment(Qt.AlignCenter)
+            cap.setToolTip(tip)
             cap.setStyleSheet(
-                f"color:{FG3}; font-size:9px; letter-spacing:1px; background:transparent;")
+                f"QLabel {{ color:{FG3}; font-size:9px; letter-spacing:1px; background:transparent; }} "
+                + TOOLTIP_CSS)
             tl.addWidget(cap)
             sl.addWidget(tile, 1)
             if not last:
@@ -214,8 +237,7 @@ class WardenApp(QMainWindow):
 
         _tile(self.stat_total_val,   "Devices")
         _tile(self.stat_blocked_val, "Blocked")
-        _tile(self.stat_online_val,  "Online")
-        _tile(self.stat_gw_val,      "Gateway", last=True)
+        _tile(self.stat_online_val,  "Online", last=True)
 
         parent.addWidget(stats_bar)
 
@@ -263,14 +285,12 @@ class WardenApp(QMainWindow):
         self.gw_mac_toggle.setVisible(False)   # appears only after the first scan
         self.gw_mac_toggle.setToolTip("Show gateway MAC address")
         self.gw_mac_toggle.clicked.connect(self._toggle_gw_mac)
+        _ToggleIconHover(self.gw_mac_toggle,
+                          lambda: self._set_eye_icon(self.gw_mac_toggle, self._gw_mac_visible))
         tl.addWidget(self.gw_mac_lbl)
         tl.addSpacing(4)
         tl.addWidget(self.gw_mac_toggle)
         tl.addStretch()
-
-        self.count_lbl = label("", ACCENT, 11, bold=True)
-        self.count_lbl.setToolTip("Devices found in the last scan")
-        tl.addWidget(self.count_lbl)
 
         parent.addWidget(tb)
 
@@ -316,8 +336,7 @@ class WardenApp(QMainWindow):
         ep.addWidget(welcome_hint)
         ep.addSpacing(28)
 
-        self.scan_btn = button("Scan Network", ACCENT, ACCENT_H)
-        self.scan_btn.setFixedHeight(38)
+        self.scan_btn = button("Scan Network", ACCENT, ACCENT_H, radius=20, height=38)
         self.scan_btn.setToolTip("Discover all devices connected to this network via ARP")
         self.scan_btn.clicked.connect(self._start_scan)
         ep.addWidget(self.scan_btn, 0, Qt.AlignCenter)
@@ -382,7 +401,25 @@ class WardenApp(QMainWindow):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(False)
-        self.table.setStyleSheet(f"QTableWidget {{ alternate-background-color: {ROW_B}; }}")
+        self.table.setStyleSheet(f"""
+            QTableWidget {{ alternate-background-color: {ROW_B}; }}
+            QTableWidget::indicator {{
+                width: 14px;
+                height: 14px;
+                border-radius: 3px;
+            }}
+            QTableWidget::indicator:unchecked {{
+                background: {SURFACE2};
+                border: 1px solid {FG3};
+            }}
+            QTableWidget::indicator:unchecked:hover {{
+                border-color: {FG2};
+            }}
+            QTableWidget::indicator:checked {{
+                background: {ACCENT};
+                border: 1px solid {ACCENT_H};
+            }}
+        """)
         self.table.verticalHeader().setDefaultSectionSize(42)
         # Row sorting is disabled: enabling it causes Qt to reorder rows physically,
         # which desynchronises ip_to_row and routes cell updates to the wrong row.
@@ -406,7 +443,13 @@ class WardenApp(QMainWindow):
         cl.setSpacing(8)
 
         def _group(title: str, tooltip: str) -> QLabel:
-            """Create a group-scope label with hover highlight and tooltip."""
+            """Create a group-scope caption label with a tooltip.
+
+            Not clickable, so — same as the stat tiles and the nav status
+            indicator — it carries no hover color/background change of its
+            own. Only actual buttons react visually to hover; a plain label
+            changing appearance on hover implies clickability it doesn't have.
+            """
             lbl = QLabel(title)
             lbl.setStyleSheet(f"""
                 QLabel {{
@@ -416,18 +459,13 @@ class WardenApp(QMainWindow):
                     letter-spacing: 1px;
                     background: transparent;
                     padding: 2px 5px;
-                    border-radius: 3px;
                 }}
-                QLabel:hover {{ color: {FG}; background: {SURFACE2}; }}
             """ + TOOLTIP_CSS)
             lbl.setToolTip(tooltip)
-            lbl.setCursor(Qt.PointingHandCursor)
             return lbl
 
-        self.block_btn   = button("Block",   DANGER,  "#c0392b", vanish_disabled=True)
-        self.unblock_btn = button("Unblock", SUCCESS, "#2ea043", vanish_disabled=True)
-        self.block_btn.setFixedHeight(34)
-        self.unblock_btn.setFixedHeight(34)
+        self.block_btn   = button("Block",   DANGER,  "#c0392b", vanish_disabled=True, radius=20, height=34)
+        self.unblock_btn = button("Unblock", SUCCESS, "#2ea043", vanish_disabled=True, radius=20, height=34)
         self.block_btn.setToolTip("Cut internet access for the selected device(s) via ARP spoofing")
         self.unblock_btn.setToolTip("Restore internet access for the selected device(s)")
 
@@ -439,10 +477,8 @@ class WardenApp(QMainWindow):
         cl.addWidget(vdivider())
         cl.addSpacing(16)
 
-        self.block_all_btn   = button("Block All",   DANGER,  "#c0392b", vanish_disabled=True)
-        self.unblock_all_btn = button("Unblock All", SUCCESS, "#2ea043", vanish_disabled=True)
-        self.block_all_btn.setFixedHeight(34)
-        self.unblock_all_btn.setFixedHeight(34)
+        self.block_all_btn   = button("Block All",   DANGER,  "#c0392b", vanish_disabled=True, radius=20, height=34)
+        self.unblock_all_btn = button("Unblock All", SUCCESS, "#2ea043", vanish_disabled=True, radius=20, height=34)
         self.block_all_btn.setToolTip("Block every listed device simultaneously")
         self.unblock_all_btn.setToolTip("Restore access for all currently blocked devices")
 
@@ -458,32 +494,30 @@ class WardenApp(QMainWindow):
 
         cl.addStretch()
 
-        self.reload_btn = QPushButton()
-        self.reload_btn.setIconSize(QSize(18, 18))
-        self.reload_btn.setFixedSize(36, 36)
+        self.reload_btn = icon_button(RELOAD_SVG, size=36, icon_size=18)
         self.reload_btn.setToolTip("Rescan the network to refresh the device list")
-        self.reload_btn.setCursor(Qt.PointingHandCursor)
-        self.reload_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: none; border-radius: 6px; }"
-            "QPushButton:pressed { background: rgba(45,51,59,0.8); }\n"
-            + TOOLTIP_CSS
-        )
         _IconHover(self.reload_btn, svg_icon(RELOAD_SVG, 18, FG), svg_icon(RELOAD_SVG, 18, FG3))
         self.reload_btn.clicked.connect(self._start_scan)
+        # Only meaningful once at least one scan has actually run — nothing to
+        # refresh at initial launch or right after Reset clears the table.
+        self.reload_btn.setEnabled(False)
         cl.addWidget(self.reload_btn)
         cl.addSpacing(6)
 
         self.clear_btn = QPushButton("Reset")
-        self.clear_btn.setFixedHeight(34)
         self.clear_btn.setToolTip("Unblock all devices and clear the table")
+        self.clear_btn.setAttribute(Qt.WA_StyledBackground, True)
         self.clear_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
                 color: {DANGER};
                 border: none;
+                border-radius: 8px;
                 font-size: 12px;
                 font-weight: 500;
-                padding: 6px 8px;
+                padding: 6px 12px;
+                min-height: 34px;
+                max-height: 34px;
             }}
             QPushButton:hover    {{ background: transparent; color: #c0392b; }}
             QPushButton:pressed  {{ background: transparent; color: #922b21; }}
@@ -499,7 +533,7 @@ class WardenApp(QMainWindow):
         """Thin status bar at the bottom with an activity dot and a last-action message."""
         sb = QFrame()
         sb.setFixedHeight(28)
-        sb.setStyleSheet(f"background:{BG}; border-top:1px solid {CANVAS};")
+        sb.setStyleSheet(f"background:{BG}; border-top:1px solid {BORDER};")
         sbl = QHBoxLayout(sb)
         sbl.setContentsMargins(16, 0, 16, 0)
         sbl.setSpacing(6)
@@ -527,22 +561,18 @@ class WardenApp(QMainWindow):
         """Create an icon-only eye toggle for revealing or concealing a sensitive field.
 
         Starts with the eye (show) icon since fields are hidden by default.
-        The icon swaps to eye-slash when the field is revealed.
+        The icon swaps to eye-slash when the field is revealed. No background
+        fill on hover — same rule as Reload and Reset — only the icon color
+        shifts from FG3 (idle) to FG2 (hover), handled by _ToggleIconHover.
         """
-        btn = QPushButton()
-        btn.setIcon(svg_icon(EYE_SVG, 13, FG3))
-        btn.setIconSize(QSize(13, 13))
-        btn.setFixedSize(20, 20)
-        btn.setCursor(Qt.PointingHandCursor)
-        btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent;
-                border: none;
-                padding: 0;
-            }}
-            QPushButton:hover {{ background: {SURFACE}; border-radius: 4px; }}
-        """ + TOOLTIP_CSS)
+        btn = icon_button(EYE_SVG, size=20, icon_size=13, idle_color=FG3)
         return btn
+
+    def _set_eye_icon(self, btn: QPushButton, visible: bool) -> None:
+        """Render an eye/eye-slash icon reflecting both toggle state and hover state."""
+        svg = EYE_SLASH_SVG if visible else EYE_SVG
+        color = FG2 if btn.underMouse() else FG3
+        btn.setIcon(svg_icon(svg, 13, color))
 
     def _toggle_gw_mac(self) -> None:
         """Toggle visibility of the gateway MAC address in the toolbar."""
@@ -573,13 +603,12 @@ class WardenApp(QMainWindow):
         # MAC resolved successfully: show with toggle
         self.gw_mac_lbl.setVisible(True)
         self.gw_mac_toggle.setVisible(True)
+        self._set_eye_icon(self.gw_mac_toggle, self._gw_mac_visible)
         if self._gw_mac_visible:
             self.gw_mac_lbl.setText(f"Gateway MAC:  {self._gw_mac_actual}")
-            self.gw_mac_toggle.setIcon(svg_icon(EYE_SLASH_SVG, 13, FG3))
             self.gw_mac_toggle.setToolTip("Hide gateway MAC address")
         else:
             self.gw_mac_lbl.setText("Gateway MAC:  xx:xx:xx:xx:xx:xx")
-            self.gw_mac_toggle.setIcon(svg_icon(EYE_SVG, 13, FG3))
             self.gw_mac_toggle.setToolTip("Show gateway MAC address")
 
     def _toggle_iface(self) -> None:
@@ -603,13 +632,12 @@ class WardenApp(QMainWindow):
             return
         # Interface name (e.g. "en0") is always shown; only the IP is toggleable
         self.iface_name_lbl.setText(self._iface_name_actual)
+        self._set_eye_icon(self.iface_toggle, self._iface_visible)
         if self._iface_visible:
             self.iface_lbl.setText(self._iface_actual)
-            self.iface_toggle.setIcon(svg_icon(EYE_SLASH_SVG, 13, FG3))
             self.iface_toggle.setToolTip("Hide local IP address")
         else:
             self.iface_lbl.setText("xxx.xxx.xxx.xxx")
-            self.iface_toggle.setIcon(svg_icon(EYE_SVG, 13, FG3))
             self.iface_toggle.setToolTip("Show local IP address")
 
     # ---------------------------------------------------------------------------
@@ -625,16 +653,16 @@ class WardenApp(QMainWindow):
         def _apply(t=total, b=blocked, o=online):
             self.stat_total_val.setText(str(t))
             self.stat_total_val.setStyleSheet(
-                f"color:{'#8b5cf6' if t > 0 else FG3}; font-size:22px; "
-                f"font-weight:bold; background:transparent;")
+                f"QLabel {{ color:{'#8b5cf6' if t > 0 else FG3}; font-size:22px; "
+                f"font-weight:bold; background:transparent; }} " + TOOLTIP_CSS)
             self.stat_blocked_val.setText(str(b))
             self.stat_blocked_val.setStyleSheet(
-                f"color:{DANGER if b > 0 else FG3}; font-size:22px; "
-                f"font-weight:bold; background:transparent;")
+                f"QLabel {{ color:{DANGER if b > 0 else FG3}; font-size:22px; "
+                f"font-weight:bold; background:transparent; }} " + TOOLTIP_CSS)
             self.stat_online_val.setText(str(o))
             self.stat_online_val.setStyleSheet(
-                f"color:{SUCCESS if o > 0 else FG3}; font-size:22px; "
-                f"font-weight:bold; background:transparent;")
+                f"QLabel {{ color:{SUCCESS if o > 0 else FG3}; font-size:22px; "
+                f"font-weight:bold; background:transparent; }} " + TOOLTIP_CSS)
 
         self._ui(_apply)
 
@@ -734,19 +762,14 @@ class WardenApp(QMainWindow):
             self.nav_dot.setStyleSheet(
                 f"color:{SUCCESS}; font-size:9px; background:transparent;"),
             self.nav_status.setStyleSheet(
-                f"color:{FG2}; font-size:11px; background:transparent;"),
+                f"QLabel {{ color:{FG2}; font-size:11px; background:transparent; }} " + TOOLTIP_CSS),
             self.nav_status.setText("Active"),
         ))
 
         self.gateway_mac = network.resolve_gateway_mac(gw)
         mac_txt = self.gateway_mac if self.gateway_mac else "(not found)"
         self._gw_mac_actual = mac_txt
-        self._ui(lambda g=gw: (
-            self._refresh_gw_mac_label(),
-            self.stat_gw_val.setText(g),
-            self.stat_gw_val.setStyleSheet(
-                f"color:{FG}; font-size:12px; font-weight:normal; background:transparent;"),
-        ))
+        self._ui(self._refresh_gw_mac_label)
 
         found = []
         try:
@@ -792,7 +815,6 @@ class WardenApp(QMainWindow):
             # Always set the correct page; a re-scan stays on page 1 (scanning) until _finish
             # runs here, so this explicit switch is needed whether n > 0 or n == 0.
             self.stack.setCurrentIndex(2 if n > 0 else 0)
-            self.count_lbl.setText(f"{n} device{'s' if n != 1 else ''}" if n else "")
             self.status_lbl.setText(
                 f"Scan complete — {n} device{'s' if n != 1 else ''} found")
             self.dot_lbl.setStyleSheet(
@@ -1019,11 +1041,11 @@ class WardenApp(QMainWindow):
         self.table.setRowCount(0)
         self.ip_to_row.clear()
         self.devices.clear()
-        self.count_lbl.setText("")
         self.stack.setCurrentIndex(0)   # return to the empty state page
         self._update_stats()
         self._set_status("Table cleared — click Scan Network to discover devices", FG3)
         self._on_selection_changed()
+        self.reload_btn.setEnabled(False)   # back to initial state — nothing scanned yet
 
     def _block(self, ip: str, mac: str) -> None:
         """Start the ARP spoof loop for the given device and reflect blocked state in the UI."""
