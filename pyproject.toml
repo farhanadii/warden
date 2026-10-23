@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "warden-net"
+version = "1.0.1"
+description = "Warden: local network control (ARP scanning & management) with a PyQt5 UI."
+readme = "SETUP.md"
+authors = [{ name = "Muhammad Farhan Adisaputro" }]
+keywords = ["network", "arp", "scanner", "pyqt5", "macos", "lan"]
+classifiers = [
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Networking :: Monitoring",
+]
+# PyQt5 has no wheels for Python 3.14 yet. Capping here makes pip fail with a
+# clear "requires a different Python" message instead of a cryptic build error.
+requires-python = ">=3.9,<3.14"
+dependencies = [
+    "PyQt5",
+    "scapy",
+]
+
+[project.urls]
+Homepage = "https://github.com/farhanadii/warden"
+Repository = "https://github.com/farhanadii/warden"
+Issues = "https://github.com/farhanadii/warden/issues"
+
+[project.scripts]
+warden = "warden_app.cli:main"
+
+[tool.setuptools]
+packages = ["warden_app"]
