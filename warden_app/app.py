@@ -23,7 +23,7 @@ from PyQt5.QtGui import QColor
 from . import network
 from . import oui
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 from .theme import (
     BG, CANVAS, SURFACE, SURFACE2, BORDER,
     ACCENT, ACCENT_H, SUCCESS, DANGER, WARNING, FG, FG2, FG3,
