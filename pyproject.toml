@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "warden-net"
+version = "1.0.0"
+description = "Warden: local network control (ARP scanning & management) with a PyQt5 UI."
+readme = "SETUP.md"
+# PyQt5 has no wheels for Python 3.14 yet. Capping here makes pip fail with a
+# clear "requires a different Python" message instead of a cryptic build error.
+requires-python = ">=3.9,<3.14"
+dependencies = [
+    "PyQt5",
+    "scapy",
+]
+
+[project.scripts]
+warden = "warden_app.cli:main"
+
+[tool.setuptools]
+packages = ["warden_app"]

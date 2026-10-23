@@ -1,27 +1,13 @@
 """
-Warden: Network Control
-Entry point. Bootstraps the Qt application and launches the main window.
-Run with: sudo python3 warden.py
+Warden: Network Control — compatibility entry point.
+
+The real code now lives in the ``warden_app`` package so Warden can be
+installed with pip/pipx (``pip install .`` exposes a ``warden`` command).
+This shim keeps the familiar ``python warden.py`` invocation working; it
+self-elevates to root when needed (raw packets require it).
 """
 
-import sys
-
-from PyQt5.QtWidgets import QApplication, QStyleFactory
-
-from app import WardenApp
-from theme import APP_STYLE
-
-
-def main() -> None:
-    app = QApplication(sys.argv)
-    # Fusion replaces the native macOS style renderer, giving Qt full control over
-    # widget drawing and removing the platform 3D appearance on QLineEdit and other inputs.
-    app.setStyle(QStyleFactory.create("Fusion"))
-    app.setStyleSheet(APP_STYLE)
-    window = WardenApp()
-    window.show()
-    sys.exit(app.exec_())
-
+from warden_app.cli import main
 
 if __name__ == "__main__":
     main()

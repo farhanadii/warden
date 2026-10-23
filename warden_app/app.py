@@ -20,11 +20,11 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, pyqtSignal, QObject, QEvent
 from PyQt5.QtGui import QColor
 
-import network
-import oui
+from . import network
+from . import oui
 
 VERSION = "1.0.0"
-from theme import (
+from .theme import (
     BG, CANVAS, SURFACE, SURFACE2, BORDER,
     ACCENT, ACCENT_H, SUCCESS, DANGER, WARNING, FG, FG2, FG3,
     ROW_A, ROW_B, ROW_BLK,

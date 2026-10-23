@@ -1,0 +1,60 @@
+#!/bin/bash
+#
+# Warden launcher.
+#
+# Usage:  ./warden
+#
+# On first run this builds a self-contained Python environment next to the
+# script (.venv) and installs Warden's dependencies into it. Every run after
+# that just launches the app. It does NOT depend on the system `python3`, so an
+# OS/Homebrew Python upgrade can never break it.
+#
+# You run this WITHOUT sudo; the script elevates only the final launch (Warden
+# needs root to send raw network packets), so the environment stays owned by
+# you rather than root.
+
+set -euo pipefail
+
+# Always operate from the script's own directory, however it was invoked.
+cd "$(dirname "$0")"
+
+VENV=".venv"
+PYTHON="$VENV/bin/python"
+
+build_env() {
+    # Pick a Python that actually has PyQt5 wheels. 3.14 does not (yet), so we
+    # prefer known-good versions and fall back to whatever `python3` is.
+    local candidate found=""
+    for candidate in python3.12 python3.13 python3.11 python3; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            local ver
+            ver="$("$candidate" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+            case "$ver" in
+                3.9|3.10|3.11|3.12|3.13) found="$candidate"; break ;;
+            esac
+        fi
+    done
+
+    if [ -z "$found" ]; then
+        echo "Warden: need Python 3.9-3.13 (PyQt5 has no wheels for 3.14 yet)." >&2
+        echo "        Install one, e.g.:  brew install python@3.12" >&2
+        exit 1
+    fi
+
+    echo "Warden: first-time setup — building environment with $found ..."
+    "$found" -m venv "$VENV"
+    "$PYTHON" -m pip install --quiet --upgrade pip
+    "$PYTHON" -m pip install --quiet -r requirements.txt
+    echo "Warden: setup complete."
+}
+
+# Build the env if it's missing, or self-heal if deps somehow went away.
+if [ ! -x "$PYTHON" ] || ! "$PYTHON" -c "import PyQt5, scapy" >/dev/null 2>&1; then
+    [ -x "$PYTHON" ] && "$PYTHON" -m pip install --quiet -r requirements.txt >/dev/null 2>&1 || build_env
+    # Re-verify; if still broken, rebuild from scratch.
+    "$PYTHON" -c "import PyQt5, scapy" >/dev/null 2>&1 || { rm -rf "$VENV"; build_env; }
+fi
+
+# Launch. The app self-elevates (re-execs under sudo), which prompts for your
+# password in the terminal (needs a real TTY).
+exec "$PYTHON" -m warden_app
